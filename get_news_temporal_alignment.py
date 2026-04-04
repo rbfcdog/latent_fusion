@@ -2,7 +2,7 @@ import json
 import pandas as pd
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import numpy as np
 
 class NewsTemporalAligner:
@@ -110,7 +110,7 @@ class NewsTemporalAligner:
         aligned_df = pd.DataFrame(aligned_records)
         return aligned_df, stats
     
-    def align_all_tickers(self, lookback_days: int = 5, limit: int = None) -> Tuple[pd.DataFrame, Dict]:
+    def align_all_tickers(self, lookback_days: int = 5, limit: Optional[int] = None) -> Tuple[pd.DataFrame, Dict]:
         """
         Align news and time series for all available tickers.
         
