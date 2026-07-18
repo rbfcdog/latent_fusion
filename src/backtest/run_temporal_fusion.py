@@ -34,7 +34,19 @@ ORANGE = '#FF9800'
 BLUE = '#42A5F5'
 
 def main():
-    news_dir = _root / 'data/news_crypto'
+    if not (_root / 'data/news_crypto').exists():
+        news_dir = _root / 'sample_data/news_crypto'
+        prices_path = _root / 'sample_data/prices/combined_1d.parquet'
+        cache_dir = _root / 'sample_data/cache/text_crypto'
+        meta_sp_path = _root / 'sample_data/cache/text/top50_daily_metadata.csv'
+        emb_sp_path = _root / 'sample_data/cache/text/top50_daily_embeddings.npy'
+    else:
+        news_dir = _root / 'data/news_crypto'
+        prices_path = _root / 'data/lse_market_data/combined_1d.parquet'
+        cache_dir = _root / 'cache/text_crypto'
+        meta_sp_path = _root / 'cache/text/top50_daily_metadata.csv'
+        emb_sp_path = _root / 'cache/text/top50_daily_embeddings.npy'
+
     news_frames = []
     for f in sorted(news_dir.glob('*.csv')):
         nd = pd.read_csv(f)
@@ -42,19 +54,18 @@ def main():
         news_frames.append(nd)
     news = pd.concat(news_frames, ignore_index=True).dropna(subset=['date','title'])
 
-    prices = pd.read_parquet(_root / 'data/lse_market_data/combined_1d.parquet')
+    prices = pd.read_parquet(prices_path)
     prices['timestamp'] = pd.to_datetime(prices['timestamp']).dt.tz_localize(None).dt.normalize()
     price_pivot = prices.pivot_table(index='timestamp', columns='symbol', values='close')
 
-    cache_dir = _root / 'cache/text_crypto'
     crypto_emb = np.load(cache_dir / 'crypto_daily_embeddings.npy')
     crypto_meta = pd.read_csv(cache_dir / 'crypto_daily_metadata.csv')
     crypto_meta['date'] = pd.to_datetime(crypto_meta['date'])
 
-    meta_sp = pd.read_csv(_root / 'cache/text/top50_daily_metadata.csv')
+    meta_sp = pd.read_csv(meta_sp_path)
     meta_sp['date'] = pd.to_datetime(meta_sp['date'], errors='coerce').dt.tz_localize(None).dt.normalize()
     meta_sp = meta_sp.dropna(subset=['date'])
-    emb_sp_all = np.load(_root / 'cache/text/top50_daily_embeddings.npy')
+    emb_sp_all = np.load(emb_sp_path)
     nasdaq_tickers = prices[prices['asset_group'] == 'nasdaq']['symbol'].unique()
     sp_ov_tickers = sorted(set(nasdaq_tickers) & set(meta_sp['ticker'].unique()))
     sp_ov = meta_sp[(meta_sp['date'] >= '2025-01-01') & (meta_sp['ticker'].isin(sp_ov_tickers))]
