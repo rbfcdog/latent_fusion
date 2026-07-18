@@ -1,0 +1,36 @@
+services:
+  paper-trading:
+    build:
+      context: ../..
+      dockerfile: src/paper_trading/deploy/Dockerfile
+    image: latent-fusion-paper:latest
+    container_name: paper-trading
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      - TZ=UTC
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - paper-state:/app/paper_trading/state
+      - paper-logs:/app/outputs/logs
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import sqlite3,os; p=os.path.join('paper_trading/state','live.sqlite'); c=sqlite3.connect(p); n=c.execute('SELECT COUNT(*) FROM snapshots').fetchone()[0]; exit(0 if n>0 else 1)\""]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 2m
+
+volumes:
+  paper-state:
+  paper-logs:

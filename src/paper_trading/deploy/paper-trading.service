@@ -1,0 +1,33 @@
+[Unit]
+Description=Latent Fusion live paper-trading daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paperbot
+Group=paperbot
+WorkingDirectory=/opt/latent_fusion
+EnvironmentFile=/opt/latent_fusion/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=TZ=UTC
+ExecStart=/usr/local/bin/uv run python -m src.paper_trading \
+    --broker livepaper --data-source binance \
+    --strategy router --symbol BTCUSDT --timeframe 1m \
+    --bar-window 120 --poll-seconds 60 \
+    --initial-cash 10000 --fee-bps 4 --slippage-bps 1 \
+    --long-only --state-path paper_trading/state/live.sqlite \
+    --log-level INFO --verbose
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/paper-trading/out.log
+StandardError=append:/var/log/paper-trading/err.log
+
+ReadWritePaths=/opt/latent_fusion/paper_trading/state /var/log/paper-trading
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

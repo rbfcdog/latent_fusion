@@ -1,0 +1,201 @@
+Fusão Latente de Foundation Models para Predição
+Financeira Multimodal
+Rodrigo Banin Ferraz de Camargo
+Instituto de Computação – UNICAMP
+
+Allan Mariano de Souza
+Instituto de Computação – UNICAMP
+
+Resumo
+Esta proposta de Iniciação Científica tem como objetivo investigar arquiteturas multimodais para predição financeira baseadas na fusão latente entre Large Language Models
+(LLMs) e Foundation Models (FMs) para séries temporais. Enquanto séries temporais de
+mercado capturam dinâmicas quantitativas contínuas, textos financeiros (como notícias e comunicados sobre ativos) carregam informações semânticas sobre eventos e expectativas que
+influenciam diretamente o comportamento dos preços. Propõe-se um framework de fusão
+profunda e bidirecional de representações latentes, utilizando mecanismos de atenção cruzada, visando melhorar desempenho preditivo, explicabilidade e robustez sob drift temporal
+em cenários reais de mercado.
+
+1
+
+Introdução
+
+O uso de aprendizado de máquina em finanças tem crescido com a disponibilidade de grandes
+volumes de dados e o avanço de modelos de alta capacidade. Problemas como predição de
+retornos e volatilidade são tradicionalmente abordados por meio de séries temporais numéricas,
+utilizando preços, volumes e indicadores técnicos.
+Entretanto, o comportamento dos mercados também é fortemente influenciado por informações exógenas expressas em linguagem natural, como notícias e comunicados corporativos.
+Trabalhos recentes demonstram que modelos de linguagem são capazes de capturar sinais relevantes desses textos, muitas vezes antecipando movimentos de mercado [1].
+Apesar desses avanços, grande parte das abordagens existentes trata texto e séries temporais
+de forma isolada ou por fusão superficial, limitando a modelagem de interações complexas entre
+eventos semânticos e dinâmicas quantitativas.
+
+2
+
+Problema e Lacuna
+
+Modelos baseados exclusivamente em séries temporais apresentam limitações ao ignorar eventos
+externos que não se manifestam imediatamente nos preços. Por outro lado, abordagens puramente textuais não capturam a estrutura temporal e os regimes quantitativos do mercado.
+Técnicas comuns de fusão, como concatenação de features ou ensemble tardio, não permitem
+modelar dependências condicionais entre texto e dinâmica temporal.
+A literatura recente carece de arquiteturas que realizem fusão latente profunda e bidirecional entre representações textuais e séries temporais contínuas, especialmente utilizando
+modelos fundacionais. Essa lacuna limita a capacidade dos modelos de capturar interações complexas entre narrativa financeira e comportamento quantitativo, além de reduzir a robustez a
+mudanças de regime e drift temporal.
+
+1
+
+3
+
+Objetivos
+
+Desenvolver e validar um framework multimodal de fusão latente entre LLMs e FMs para séries
+temporais financeiras, aplicado à predição de variáveis de mercado.
+• Projetar um módulo de alinhamento e fusão latente para dados textuais e séries temporais.
+• Avaliar o impacto da fusão profunda no desempenho preditivo em tarefas financeiras.
+• Investigar mecanismos de explicabilidade baseados em atenção cruzada entre modalidades.
+• Analisar a robustez do modelo frente a drift temporal e mudanças de regime de mercado.
+
+4
+
+Proposta
+
+A Figura 1 apresenta a arquitetura geral do framework multimodal proposto para predição
+financeira, estruturada de forma a integrar, em nível latente, informações provenientes de séries
+temporais financeiras e de textos associados a ativos.
+
+Figura 1: Arquitetura multimodal proposta com fusão latente entre texto e series temporais.
+
+4.1
+
+Módulo de Alinhamento e Fusão Latente
+
+A principal contribuição deste trabalho está no módulo de alinhamento e fusão latente multimodal. Diferentemente de abordagens baseadas em concatenação de features ou fusão tardia, o
+framework proposto realiza uma integração profunda e bidirecional entre texto e séries temporais
+diretamente no espaço latente.
+As representações extraídas dos modelos fundacionais unimodais são inicialmente projetadas
+para um espaço latente compartilhado. Em seguida, aplica-se um mecanismo de atenção cruzada,
+no qual cada modalidade passa a condicionar a interpretação da outra. Na atenção do domínio
+temporal para o textual, a representação temporal atua como query, enquanto a representação
+textual fornece keys e values, com pesos definidos por:
+
+
+⊤
+Qts Ktxt
+√
+Attnts→txt = softmax
+dk
+Esse mecanismo permite ponderar dinamicamente informações textuais relevantes de acordo
+com o estado temporal do mercado, resultando em uma representação latente fundida que combina contexto semântico e dinâmica quantitativa.
+
+4.2
+
+Cabeça de Predição e Explicabilidade
+
+A representação latente fundida é utilizada como entrada para uma cabeça de predição neural
+responsável por estimar variáveis financeiras futuras, como volatilidade ou direção de retorno.
+Ao operar sobre uma representação já integrada, a cabeça de predição explora diretamente as
+interações entre texto e séries temporais.
+2
+
+O uso explícito de atenção cruzada também confere interpretabilidade ao modelo. A análise
+dos pesos de atenção permite identificar quais eventos textuais e quais segmentos temporais
+tiveram maior influência nas predições, fornecendo evidências claras do processo decisório do
+modelo.
+
+5
+
+Conjuntos de Dados
+
+Serão utilizados conjuntos de dados multimodais públicos amplamente reconhecidos na literatura:
+• FinMultiTime [2]: dataset multimodal que alinha texto financeiro e séries temporais de
+ativos do SP 500, sendo particularmente adequado para avaliação de arquiteturas de fusão
+latente.
+Esses datasets permitem validar a proposta em cenários realistas, com diversidade temporal
+e textual suficiente para análise de robustez e drift.
+
+6
+
+Metodologia e Cronograma
+
+O projeto será desenvolvido ao longo de 12 meses, seguindo uma metodologia incremental organizada em etapas bem definidas. A seguir são descritas as principais atividades..
+• Atividade 1 – Fundamentação técnica e preparação do ambiente: Estudo dos
+principais modelos fundacionais para séries temporais financeiras, LLMs aplicados a texto
+financeiro e arquiteturas multimodais baseadas em fusão latente e atenção cruzada. Paralelamente, será configurado o ambiente computacional necessário para experimentação.
+• Atividade 2 – Aquisição e pré-processamento dos dados multimodais: Obtenção
+e organização de conjuntos de dados que integram séries temporais financeiras e textos. Os
+dados numéricos serão normalizados e organizados em janelas, enquanto os textos passarão
+por limpeza e alinhamento cronológico, gerando um conjunto de dados multimodal.
+• Atividade 3 – Implementação dos modelos unimodais de referência: Desenvolvimento de modelos baseline baseados em séries temporais (como LSTM ou Transformers
+temporais) e modelos baseados apenas em texto, utilizando embeddings extraídos por
+LLMs. Esses modelos servirão como referência experimental para comparação.
+• Atividade 4 – Desenvolvimento do módulo de alinhamento e fusão latente:
+Implementação do módulo central do projeto, responsável por alinhar e integrar representações textuais e temporais em um espaço latente compartilhado por meio de atenção
+cruzada bidirecional resultando em um módulo de fusão funcional e integrado à arquitetura
+completa.
+• Atividade 5 – Treinamento multimodal e ajuste de hiperparâmetros: Treinamento do modelo multimodal, inicialmente focado no alinhamento entre modalidades e,
+em seguida, de forma end-to-end. Serão realizados ajustes de hiperparâmetros e monitoramento do desempenho, com o objetivo de obter um modelo estável.
+• Atividade 6 – Validação experimental e benchmarking: Avaliação sistemática do
+modelo proposto em comparação com os modelos de referência, utilizando divisões cronológicas dos dados. Serão analisadas métricas de desempenho adequadas às tarefas consideradas, bem como a estabilidade do modelo sob diferentes regimes de mercado e cenários
+de drift temporal.
+3
+
+• Atividade 7 – Análise de explicabilidade: Investigação da interpretabilidade do modelo multimodal por meio da análise dos pesos de atenção cruzada e de métodos pós-hoc.
+Essa etapa busca compreender quais textos e segmentos temporais exercem maior influência nas predições, produzindo análises qualitativas e visualizações interpretáveis.
+• Atividade 8 – Consolidação e redação dos resultados: Organização final dos experimentos, sistematização dos resultados obtidos e redação do relatório final de Iniciação
+Científica ou de um artigo acadêmico. O código será revisado e documentado, garantindo
+clareza metodológica e reprodutibilidade.
+
+Tabela 1: Cronograma de atividades
+Meses
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+9
+
+10
+
+11
+
+12
+
+Atividade 1
+Atividade 2
+Atividade 3
+Atividade 4
+Atividade 5
+Atividade 6
+Atividade 7
+Atividade 8
+
+7
+
+Resultados Esperados
+
+Espera-se que o modelo multimodal proposto apresente desempenho preditivo superior aos modelos unimodais de referência, especialmente em cenários nos quais eventos textuais relevantes
+antecedem ou acompanham mudanças significativas na dinâmica das séries temporais financeiras. A fusão latente profunda entre representações textuais e temporais deve resultar em ganhos
+consistentes em métricas de regressão ou classificação, além de maior estabilidade do desempenho ao longo do tempo, indicando maior robustez frente a drift temporal e mudanças de regime
+de mercado.
+Adicionalmente, espera-se que os mecanismos de atenção cruzada possibilitem uma análise
+interpretável das predições, permitindo identificar quais textos e quais segmentos temporais tiveram maior influência nas decisões do modelo. Como resultado, o projeto deverá produzir
+evidências empíricas de que a integração explícita entre narrativa financeira e dinâmica quantitativa não apenas melhora a acurácia preditiva, mas também contribui para maior transparência
+e compreensão do processo decisório em modelos de predição financeira.
+
+Referências
+[1] Z. Dong et al., FNSPID: Financial News and Stock Price Integration Dataset, GitHub, 2024.
+[2] W. Wenyan et al., FinMultiTime: A Four-Modal Dataset for Financial Time-Series Analysis,
+arXiv preprint arXiv:2506.05019, 2025.
+
+4
+
+
