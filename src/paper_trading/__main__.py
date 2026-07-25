@@ -47,7 +47,7 @@ def _build_broker(name: str, args, initial_cash: float):
         return SimulatedBroker(args.symbol, bars, initial_cash=initial_cash,
                                fee_bps=args.fee_bps, slippage_bps=args.slippage_bps)
     if name == "alpaca":
-        from .alpaca import AlpacaBroker
+        from .alpaca_broker import AlpacaBroker
         return AlpacaBroker(paper=not args.live)
     if name == "binance":
         from .binance import BinanceBroker
@@ -58,7 +58,7 @@ def _build_broker(name: str, args, initial_cash: float):
             from .binance import BinanceBroker
             md = BinanceBroker(paper=True)
         elif args.data_source == "alpaca":
-            from .alpaca import AlpacaBroker
+            from .alpaca_broker import AlpacaBroker
             md = AlpacaBroker(paper=True)
         else:
             raise ValueError(f"unknown data-source {args.data_source}")

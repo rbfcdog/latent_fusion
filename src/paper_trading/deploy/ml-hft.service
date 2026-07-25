@@ -1,0 +1,19 @@
+[Unit]
+Description=ML HFT Strategy — SGDRegressor Online (Alpaca Paper)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/rodrigodog/latent_fusion
+Environment=ML_STRATEGY=hft
+Environment=ALPACA_API_KEY=PKWW4JEN4DZCOEOUADEJ5B42EP
+Environment=ALPACA_API_SECRET=Cg1L3LYkWaS3ayVzkymihwcFeJZ2tB8uTSb26TEEpZgW
+ExecStart=/home/rodrigodog/latent_fusion/.venv/bin/python3 /home/rodrigodog/latent_fusion/src/paper_trading/ml_service.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/rodrigodog/latent_fusion/outputs/logs/ml_hft_stdout.log
+StandardError=append:/home/rodrigodog/latent_fusion/outputs/logs/ml_hft_stderr.log
+
+[Install]
+WantedBy=default.target

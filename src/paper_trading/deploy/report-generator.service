@@ -1,0 +1,7 @@
+[Unit]
+Description=Paper Trading AI Report Generator
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/rodrigodog/latent_fusion
+ExecStart=/home/rodrigodog/latent_fusion/.venv/bin/python3 /home/rodrigodog/latent_fusion/src/paper_trading/report_generator.py

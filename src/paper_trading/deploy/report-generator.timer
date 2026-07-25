@@ -1,0 +1,9 @@
+[Unit]
+Description=Paper Trading AI Report Generator Timer
+
+[Timer]
+OnCalendar=*:0,30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

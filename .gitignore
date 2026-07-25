@@ -217,3 +217,5 @@ __marimo__/
 
 /data/
 /cache/
+/paper_trading/state/
+/outputs/logs/

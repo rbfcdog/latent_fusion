@@ -1,0 +1,35 @@
+# Paper Trading Report — 2026-07-25 19:14 UTC
+
+## Estratégias Ativas
+
+| Estratégia | Modelo | Símbolos |
+|---|---|---|
+| ML HFT | SGDRegressor (Huber, online) | AAPL, MSFT, NVDA, COST, GOOGL, ADBE |
+| ML Ensemble | SGDClassifier (LogLoss, online) | AAPL, MSFT, NVDA, GOOGL, AMZN, META |
+
+## Performance
+
+### ML HFT (SGDRegressor Online)
+
+> ⏳ **Sem dados ainda.** Estratégia rodando, aguardando mercado abrir (segunda 9:30 ET).
+
+### ML Ensemble (SGDClassifier LogLoss)
+
+> ⏳ **Sem dados ainda.** Estratégia rodando, aguardando mercado abrir (segunda 9:30 ET).
+
+## Notas
+
+Serviços `ml-hft` e `ml-ensemble` estão rodando via systemd com `Restart=always`.
+Ambos aguardam abertura do mercado (segunda-feira 9:30 AM ET) para começar a tradar.
+
+```bash
+# Verificar status dos serviços
+systemctl --user status ml-hft ml-ensemble
+
+# Ver logs em tempo real
+tail -f outputs/logs/ml_hft.log
+tail -f outputs/logs/ml_ensemble.log
+```
+
+---
+*Gerado automaticamente em 2026-07-25 19:14:18 UTC*

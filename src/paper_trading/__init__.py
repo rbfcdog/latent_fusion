@@ -35,8 +35,7 @@ __all__ = [
 
 def __getattr__(name: str):
     if name == "AlpacaBroker":
-        from .alpaca import AlpacaBroker
-        return AlpacaBroker
+        from .alpaca_broker import AlpacaBroker
     if name == "BinanceBroker":
         from .binance import BinanceBroker
         return BinanceBroker
