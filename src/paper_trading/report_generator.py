@@ -21,7 +21,7 @@ except ImportError:
     pass
 
 LOG_DIR = _root / "outputs/logs"
-RESULTS_DIR = _root / "paper-trading-results"
+RESULTS_DIR = _root / "paper_trading_results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 STRATEGIES = {
@@ -105,9 +105,9 @@ def compute_stats(strategy, label, perf_df, trades_df):
 
 def generate_report():
     now = datetime.now(timezone.utc)
-    ts = now.strftime("%Y-%m-%d_%H-%M")
+    ts = now.strftime("%Y_%m_%d_%H_%M")
     lines = []
-    lines.append(f"# Paper Trading Report — {now.strftime('%Y-%m-%d %H:%M UTC')}")
+    lines.append(f"# Paper Trading Report — {now.strftime('%Y_%m_%d %H:%M UTC')}")
     lines.append("")
     lines.append("## Estratégias Ativas")
     lines.append("")
@@ -178,7 +178,7 @@ def generate_report():
 
     lines.append("")
     lines.append("---")
-    lines.append(f"*Gerado automaticamente em {now.strftime('%Y-%m-%d %H:%M:%S UTC')}*")
+    lines.append(f"*Gerado automaticamente em {now.strftime('%Y_%m_%d %H:%M:%S UTC')}*")
 
     report_path = RESULTS_DIR / f"{ts}.md"
     with open(report_path, "w") as f:
