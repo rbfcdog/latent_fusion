@@ -38,13 +38,13 @@ def load_event_panel(path):
     if not tickers or any(not len(v) or v.shape[1:] != (2,) for v in splits.values()):
         raise ValueError("Painel sem amostras em algum período")
     for a in arrays:
-        dates = a["dates"].astype("datetime64[D]")
+        dates = a["dates"].astype("datetime64[ns]")
         if np.any(dates > FEED_END) or np.any(dates[1:] <= dates[:-1]):
             raise ValueError("Datas desordenadas ou posteriores ao período auditado do feed")
         if any(len(a[k]) != len(dates) for k in keys):
             raise ValueError("Comprimentos incoerentes no painel")
         a["dates"] = dates
-        a["target_end"] = a["target_end"].astype("datetime64[D]")
+        a["target_end"] = a["target_end"].astype("datetime64[ns]")
     if any(np.any(s[:, 0] < 0) or np.any(s[:, 0] >= len(tickers)) or
            any(np.any(s[s[:, 0] == i, 1] < 9) or
                np.any(s[s[:, 0] == i, 1] >= len(a["dates"])) for i, a in enumerate(arrays))

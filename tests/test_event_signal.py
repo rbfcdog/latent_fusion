@@ -87,6 +87,16 @@ class EventSignalTest(unittest.TestCase):
             restored = load_event_panel_file(root / "panel.npz")
             self.assertEqual(len(restored["splits"]["test"]), len(panel["splits"]["test"]))
             self.assertEqual(restored["arrays"][0]["mom"].shape[1], 2)
+            from src.fusion.event_model import load_event_panel as load_model_panel
+            from src.fusion.event_experiment import _prediction_frame, _portfolio
+
+            model_panel = load_model_panel(root / "panel.npz")
+            samples = model_panel["splits"]["test"]
+            frame = _prediction_frame(model_panel, samples, np.zeros(len(samples)),
+                                      np.zeros(len(samples), dtype=bool))
+            curve = _portfolio(model_panel, frame, cost_bps=0)
+            self.assertGreater(len(curve), 5)
+            self.assertEqual(curve.index.dtype, np.dtype("datetime64[ns]"))
             np.savez(root / "obsolete.npz", version=np.array(999))
             with self.assertRaisesRegex(ValueError, "obsoleto"):
                 load_event_panel_file(root / "obsolete.npz")
