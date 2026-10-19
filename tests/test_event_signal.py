@@ -130,5 +130,27 @@ class EventSignalTest(unittest.TestCase):
         self.assertAlmostEqual(metrics["excess_pct"],
                                (float(paid["strategy"].iloc[-1]) - float(paid["bh"].iloc[-1])) * 100)
 
+    def test_missing_scores_skip_only_scheduled_rebalance_not_price_days(self):
+        from src.fusion.event_experiment import _portfolio, _portfolio_metrics
+
+        dates = pd.bdate_range("2020-03-02", periods=20)
+        panel = {"tickers": ["AAL", "BABA"], "arrays": [
+            {"dates": dates.to_numpy(), "known_ret": np.full(20, 0.01)},
+            {"dates": dates.to_numpy(), "known_ret": np.zeros(20)},
+        ]}
+        signals = pd.DataFrame([
+            {"date": day, "ticker": ticker, "score": score}
+            for j, day in enumerate(dates[:12]) if j not in (2, 5)
+            for ticker, score in (("AAL", 1.0), ("BABA", 0.0))
+        ])
+        curve = _portfolio(panel, signals, cost_bps=10)
+        self.assertEqual(curve.index[-1], dates[15])
+        self.assertEqual(curve.index[curve["skipped_rebalance"]].tolist(), [dates[5]])
+        self.assertEqual(curve.index[curve["turnover"] > 0].tolist(), [dates[0], dates[10]])
+        self.assertEqual(_portfolio_metrics(curve, 10)["skipped_rebalances"], 1)
+        panel["arrays"][1] = {"dates": dates.delete(4).to_numpy(), "known_ret": np.zeros(19)}
+        with self.assertRaisesRegex(ValueError, "Preços diários incompletos"):
+            _portfolio(panel, signals, cost_bps=10)
+
 if __name__ == "__main__":
     unittest.main()

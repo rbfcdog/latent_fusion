@@ -132,9 +132,9 @@ def _portfolio(panel, predictions, cost_bps):
     first = eligible[0]
     last_rebalance = eligible[-1]
     interval = dates[(dates >= first) & (dates <= last_rebalance)]
-    if not interval.equals(eligible[:len(interval)]):
-        raise ValueError("Ausência de previsões em alguma sessão do teste")
-    rebalance = interval[::5]
+    scheduled = interval[::5]
+    rebalance = scheduled.intersection(common.index)
+    skipped = set(scheduled.difference(rebalance))
     final_date = dates[dates.get_loc(rebalance[-1]) + 5]
     daily = daily.loc[first:final_date]
     if np.any(~np.isfinite(daily.to_numpy())):
@@ -167,8 +167,9 @@ def _portfolio(panel, predictions, cost_bps):
                 bh_turnover = 1.0
                 bh_capital *= 1 - cost_bps / 10_000
                 bh_weights = equal.copy()
-        series.append((date, capital, bh_capital, turnover, bh_turnover))
-    return pd.DataFrame(series, columns=["date", "strategy", "bh", "turnover", "bh_turnover"]).set_index("date")
+        series.append((date, capital, bh_capital, turnover, bh_turnover, date in skipped))
+    return pd.DataFrame(series, columns=["date", "strategy", "bh", "turnover", "bh_turnover",
+                                         "skipped_rebalance"]).set_index("date")
 
 
 def _portfolio_metrics(curve, cost_bps):
@@ -184,7 +185,8 @@ def _portfolio_metrics(curve, cost_bps):
             "alpha_annual_pct": alpha * 100, "beta": beta,
             "sharpe": float(np.sqrt(252) * strat.mean() / strat.std(ddof=1)) if strat.std(ddof=1) > 0 else np.nan,
             "turnover_total": float(curve["turnover"].sum()), "cost_bps_per_traded_notional": cost_bps,
-            "rebalance_count": int((curve["turnover"] > 0).sum())}
+            "rebalance_count": int((curve["turnover"] > 0).sum()),
+            "skipped_rebalances": int(curve["skipped_rebalance"].sum())}
 
 
 def _plot(curves, path):
@@ -270,7 +272,8 @@ def run_experiment(panel_path, news_path, out_dir, cache_dir=None, cost_bps=10):
         f"## Execução\n\nManifesto/cache: `{cache_path.name}`. "
         f"Custo: {cost_bps} bps por valor nocional negociado (compras + vendas); "
         "BH compra pesos iguais no início e conserva as quantidades, sem rebalancear; "
-        "sinal redistribui pesos positivos a cada 5 pregões, marcados a mercado diariamente. "
+        "sinal tenta redistribuir pesos positivos a cada 5 pregões, marcados a mercado diariamente; "
+        "sem previsão completa no pregão agendado, mantém os pesos até o próximo rebalanceamento. "
         "Ambas as curvas partem da mesma data e incluem o custo de entrada no capital inicial; "
         "retornos totais são calculados desde capital 1 antes dos custos. Alpha anualizado é "
         "intercepto de retornos diários simples contra BH, beta é covariância/variância. "
