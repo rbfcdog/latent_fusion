@@ -1,5 +1,18 @@
 # TODO
 
+## Captura 2026-10-18
+
+- [ ] Fazer coisas novas IC (apresentável principalmente) + reunião
+- [ ] Fazer dashboard de current trades e de analytics (paper trading)
+- [ ] Subir "VM" rodando paper trading (Railway em Python)
+- [x] Testar Playwright CLI pra navegar em browser (instalado na venv, chromium ok, screenshot validado)
+- [x] Rodar testes de fusion (DL attention) — src/fusion/ + outputs/fusion/; resultado nulo honesto (IC ≈ 0, fusão não bate unimodal)
+- [ ] Rodar coisa da IC no Colab (Google AI Pro) — notebooks/05_fusion/fusion_colab.ipynb pronto; falta: git push + subir data/fusion_panel.npz (266MB) p/ MyDrive/latent_fusion_data/
+- [ ] ARIMA, GARCH, PPO, Donchian, genético e somar isso à fusão latente
+- [ ] Treinar modelo só sentiment analysis/embedding de sentimento e comparar + DL
+- [ ] Latent fusion: melhorar a UX pra ser útil pra investidor (semelhante à UI da Nubank)
+- [x] Testar estratégia com tmux (corrigir atual - debug) — daemon corrigido (loop live, cooldown 15min, Sharpe ≥4h), rodando na sessão `paper_trading`
+
 ## Active Priorities
 
 - [ ] Implement directional attention, alignment, and total loss as described in the paper

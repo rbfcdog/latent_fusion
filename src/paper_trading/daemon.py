@@ -25,7 +25,6 @@ except ImportError:
     pass
 
 from src.paper_trading.binance import BinanceBroker
-from src.paper_trading.simulated import SimulatedBroker
 from src.paper_trading.engine import PaperTradingEngine, EngineConfig
 from src.paper_trading.state import StateStore
 from src.strategy.strategies import (
@@ -69,8 +68,28 @@ STATS_PATH = _root / "outputs/logs/paper_trading_stats.jsonl"
 _stop_event = threading.Event()
 _stats_lock = threading.Lock()
 
-def run_single_cycle(symbol, strategy_name, broker_name, initial_cash=10_000.0):
-    strategy = STRATEGIES[strategy_name]()
+REBALANCE_THRESHOLD = 0.05
+
+
+def _new_state(initial_cash):
+    return {
+        "strategy": None,
+        "broker": None,
+        "cash": initial_cash,
+        "position": 0.0,
+        "bh_base": None,
+        "bars_hist": [],
+        "snaps": [],
+        "n_fills": 0,
+        "last_ts": None,
+        "last_fill_ts": None,
+    }
+
+
+def run_single_cycle(state, symbol, strategy_name, broker_name, initial_cash=10_000.0):
+    if state["strategy"] is None:
+        state["strategy"] = STRATEGIES[strategy_name]()
+    strategy = state["strategy"]
     t0 = time.time()
 
     if broker_name == "binance":
@@ -83,61 +102,51 @@ def run_single_cycle(symbol, strategy_name, broker_name, initial_cash=10_000.0):
         if df is None or len(df) < 30:
             logger.warning("poucas barras para %s: %s", symbol, len(df) if df is not None else 0)
             return None
-        broker = SimulatedBroker(symbol, df, initial_cash=initial_cash, fee_bps=4.0, slippage_bps=1.0)
-
-        warmup_bars = df.iloc[:200] if len(df) >= 200 else df
-        max_steps = min(len(df) - 1, 500)
-
-        def _next_bar():
-            return broker.advance()
+        fetched = list(df.itertuples(index=False))
     elif broker_name == "alpaca":
-        broker = AlpacaBroker(paper=True)
+        if state["broker"] is None:
+            state["broker"] = AlpacaBroker(paper=True)
+        broker = state["broker"]
         try:
-            warmup_bars = broker.get_bars(symbol, limit=200, timeframe="1m")
+            if not state["bars_hist"]:
+                fetched = list(broker.get_bars(symbol, limit=200, timeframe="1m").itertuples(index=False))
+            else:
+                bar = broker.get_latest_bar(symbol)
+                fetched = [bar] if bar is not None else []
         except Exception as e:
-            logger.error("erro Alpaca get_bars %s: %s", symbol, e)
+            logger.error("erro Alpaca %s: %s", symbol, e)
             return None
-        status = broker.get_market_status()
-        logger.info("Alpaca %s market=%s next_close=%s", symbol, status.get("open"), status.get("next_close", "?"))
-        max_steps = 100
-
-        def _next_bar():
-            try:
-                return broker.get_latest_bar(symbol)
-            except Exception:
-                return None
     else:
         raise ValueError(f"broker desconhecido: {broker_name}")
 
+    if not fetched:
+        return None
 
-    warmup = list(warmup_bars.itertuples(index=False)) if len(warmup_bars) > 0 else []
-    bh_base = float(warmup_bars.iloc[-1]["close"]) if len(warmup_bars) > 0 else None
-    cash = initial_cash
-    position = 0.0
+    if state["last_ts"] is None:
+        state["bars_hist"] = list(fetched[-200:])
+        step_bars = list(fetched[-60:])
+    else:
+        step_bars = [b for b in fetched if b.timestamp > state["last_ts"]]
+    if not step_bars:
+        return None
+
+    cash = state["cash"]
+    position = state["position"]
     fee_rate = 4.0 / 10_000.0
     slippage_rate = 1.0 / 10_000.0
-    fills_list = []
-    all_snaps = []
-
-    for step in range(max_steps):
+    for bar in step_bars:
         if _stop_event.is_set():
             break
-
-        bar = _next_bar()
-        if bar is None:
-            if broker_name == "alpaca":
-                time.sleep(1.0)
-            continue
-
-        warmup.append(bar)
-        if len(warmup) > 200:
-            warmup = warmup[-200:]
+        state["last_ts"] = bar.timestamp
+        state["bars_hist"].append(bar)
+        if len(state["bars_hist"]) > 200:
+            state["bars_hist"] = state["bars_hist"][-200:]
 
         wdf = pd.DataFrame([{
             "timestamp": b.timestamp, "open": b.open, "high": b.high,
             "low": b.low, "close": b.close, "volume": b.volume,
-            "vwap": b.vwap if b.vwap is not None else float("nan"),
-        } for b in warmup[-200:]])
+            "vwap": b.vwap if getattr(b, "vwap", None) is not None else float("nan"),
+        } for b in state["bars_hist"]])
 
         if len(wdf) < 2:
             continue
@@ -157,12 +166,19 @@ def run_single_cycle(symbol, strategy_name, broker_name, initial_cash=10_000.0):
 
         price = float(bar.close)
         equity = cash + position * price
-        target_units = (equity * w_val) / price if price > 0 else 0.0
+        cur_weight = (position * price) / equity if equity > 0 else 0.0
+        if abs(w_val - cur_weight) < REBALANCE_THRESHOLD:
+            target_units = position
+        else:
+            target_units = (equity * w_val) / price if price > 0 else 0.0
         delta = target_units - position
 
-        fee = 0.0
-        slippage = 0.0
-        if abs(delta) > 1e-12:
+        ts = pd.Timestamp(bar.timestamp)
+        cooldown_ok = (
+            state["last_fill_ts"] is None
+            or (ts - state["last_fill_ts"]).total_seconds() >= 900
+        )
+        if abs(delta) > 1e-12 and cooldown_ok:
             notional = delta * price
             fee = abs(notional) * fee_rate
             cost_price = price * (1 + np.sign(delta) * slippage_rate)
@@ -170,49 +186,42 @@ def run_single_cycle(symbol, strategy_name, broker_name, initial_cash=10_000.0):
             cash -= fee + slippage
             cash -= delta * cost_price
             position += delta
-
-            fills_list.append({
-                "timestamp": bar.timestamp, "side": "buy" if delta > 0 else "sell",
-                "qty": abs(delta), "price": cost_price, "fee": fee, "slippage": slippage,
-                "notional": abs(notional), "cash_after": cash, "position_after": position,
-            })
+            state["n_fills"] += 1
+            state["last_fill_ts"] = ts
 
         equity_after = cash + position * price
-        if bh_base is None:
-            bh_base = price
-        bh_equity = (price / bh_base) * initial_cash if bh_base else equity_after
+        if state["bh_base"] is None:
+            state["bh_base"] = price
+        bh_equity = (price / state["bh_base"]) * initial_cash
 
-        all_snaps.append({
+        state["snaps"].append({
             "timestamp": bar.timestamp, "close": price, "signal": signal_val,
             "target_weight": w_val, "position": position, "cash": cash,
             "equity": equity_after, "bh_equity": bh_equity,
         })
 
-    if len(all_snaps) < 5:
+    state["cash"] = cash
+    state["position"] = position
+
+    if len(state["snaps"]) < 5:
         return None
 
-    snap_df = pd.DataFrame(all_snaps)
+    snap_df = pd.DataFrame(state["snaps"])
     bh_curve = snap_df["bh_equity"].values
     eq_curve = snap_df["equity"].values
 
-    if len(eq_curve) < 2:
-        return None
-
     rets = np.diff(eq_curve) / eq_curve[:-1]
-    bh_rets = np.diff(bh_curve) / bh_curve[:-1]
 
     total_ret = ((eq_curve[-1] / eq_curve[0]) - 1) * 100
     bh_ret = ((bh_curve[-1] / bh_curve[0]) - 1) * 100
     excess = total_ret - bh_ret
 
-    avg_ret = np.mean(rets)
-    vol = np.std(rets) + 1e-12
-    sharpe = avg_ret / vol * np.sqrt(365 * 24 * 60)
+    sharpe = None
+    if len(rets) >= 240:
+        sharpe = float(np.mean(rets) / (np.std(rets) + 1e-12) * np.sqrt(365 * 24 * 60))
 
     peak = np.maximum.accumulate(eq_curve)
     dd = ((eq_curve / peak) - 1).min() * 100
-
-    n_trades = len(fills_list)
 
     elapsed = time.time() - t0
 
@@ -225,10 +234,11 @@ def run_single_cycle(symbol, strategy_name, broker_name, initial_cash=10_000.0):
         "total_return_pct": round(float(total_ret), 4),
         "bh_return_pct": round(float(bh_ret), 4),
         "excess_return_pct": round(float(excess), 4),
-        "sharpe": round(float(sharpe), 4),
+        "sharpe": round(sharpe, 4) if sharpe is not None else None,
         "max_dd_pct": round(float(dd), 4),
-        "steps": len(all_snaps),
-        "n_trades": n_trades,
+        "steps": len(snap_df),
+        "new_bars": len(step_bars),
+        "n_trades": state["n_fills"],
         "elapsed_s": round(elapsed, 1),
     }
 
@@ -237,22 +247,23 @@ def run_single_cycle(symbol, strategy_name, broker_name, initial_cash=10_000.0):
             f.write(json.dumps(entry) + "\n")
 
     logger.info(
-        "✅ %s/%-10s ret=%+7.2f%% bh=%+7.2f%% exc=%+7.2f%% sharpe=%+.3f dd=%.1f%% trades=%d (%d steps, %.1fs)",
-        symbol, strategy_name, total_ret, bh_ret, excess, sharpe, dd, n_trades, len(all_snaps), elapsed,
+        "✅ %s/%-10s ret=%+7.2f%% bh=%+7.2f%% exc=%+7.2f%% sharpe=%s dd=%.1f%% trades=%d (+%d barras, %d total, %.1fs)",
+        symbol, strategy_name, total_ret, bh_ret, excess,
+        f"{sharpe:+.3f}" if sharpe is not None else "n/a",
+        dd, state["n_fills"], len(step_bars), len(snap_df), elapsed,
     )
     return entry
 
 def worker(symbol, strategy_name, broker_name):
     msg = f"{symbol}/{strategy_name}"
     logger.info("▶  %s", msg)
-    cycle = 0
+    state = _new_state(10_000.0)
 
     while not _stop_event.is_set():
-        cycle += 1
-        result = run_single_cycle(symbol, strategy_name, broker_name)
+        result = run_single_cycle(state, symbol, strategy_name, broker_name)
 
-        if result is None:
-            logger.warning("❌ %s [c%d]: sem resultado", msg, cycle)
+        if result is None and state["last_ts"] is None:
+            logger.warning("❌ %s: sem barras", msg)
 
         for _ in range(60):
             if _stop_event.is_set():
@@ -287,6 +298,14 @@ def signal_handler(sig, frame):
     _stop_event.set()
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[
+            logging.FileHandler(_root / "outputs/logs/paper_trading_daemon.log"),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
@@ -331,7 +350,7 @@ def main():
     for t in threads:
         t.join(timeout=15)
     print_status()
-    logger.info("🏁 DAEMON FINALIZADO — %s"),
+    logger.info("🏁 DAEMON FINALIZADO — %s", RUN_ID)
 
 if __name__ == "__main__":
     main()
