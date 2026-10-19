@@ -12,7 +12,7 @@ def train_model(model, train_ds, val_ds, device, epochs=30, patience=5,
     model = model.to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
     crit = torch.nn.MSELoss()
-    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
+    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=512)
 
     best_val, best_state, bad = np.inf, None, 0
@@ -20,10 +20,14 @@ def train_model(model, train_ds, val_ds, device, epochs=30, patience=5,
     for epoch in range(epochs):
         model.train()
         tot, n = 0.0, 0
-        for z_ts, z_llm, y in train_dl:
-            z_ts, z_llm, y = z_ts.to(device), z_llm.to(device), y.to(device).unsqueeze(1)
+        for z_ts, z_text, text_mask, past_vol, y in train_dl:
+            z_ts = z_ts.to(device)
+            z_text = z_text.to(device)
+            text_mask = text_mask.to(device)
+            past_vol = past_vol.to(device)
+            y = y.to(device).unsqueeze(1)
             opt.zero_grad()
-            pred, _ = model(z_ts, z_llm)
+            pred, _ = model(z_ts, z_text, text_mask, past_vol)
             loss = crit(pred, y)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -35,9 +39,13 @@ def train_model(model, train_ds, val_ds, device, epochs=30, patience=5,
         model.eval()
         vtot, vn = 0.0, 0
         with torch.no_grad():
-            for z_ts, z_llm, y in val_dl:
-                z_ts, z_llm, y = z_ts.to(device), z_llm.to(device), y.to(device).unsqueeze(1)
-                pred, _ = model(z_ts, z_llm)
+            for z_ts, z_text, text_mask, past_vol, y in val_dl:
+                z_ts = z_ts.to(device)
+                z_text = z_text.to(device)
+                text_mask = text_mask.to(device)
+                past_vol = past_vol.to(device)
+                y = y.to(device).unsqueeze(1)
+                pred, _ = model(z_ts, z_text, text_mask, past_vol)
                 v = crit(pred, y).item()
                 vtot += v * len(y)
                 vn += len(y)

@@ -7,7 +7,7 @@
 - [ ] Subir "VM" rodando paper trading (Railway em Python)
 - [x] Testar Playwright CLI pra navegar em browser (instalado na venv, chromium ok, screenshot validado)
 - [x] Rodar testes de fusion (DL attention) — src/fusion/ + outputs/fusion/; resultado nulo honesto (IC ≈ 0, fusão não bate unimodal)
-- [ ] Rodar coisa da IC no Colab (Google AI Pro) — notebooks/05_fusion/fusion_colab.ipynb pronto; falta: git push + subir data/fusion_panel.npz (266MB) p/ MyDrive/latent_fusion_data/
+- [ ] Rodar ablação de volatilidade futura de 20 pregões no Colab (T4) — `notebooks/05_fusion/fusion_colab.ipynb`, painel `data/fusion_vol_panel.npz`; resultados anteriores de retorno diário permanecem em `outputs/fusion/`.
 - [ ] ARIMA, GARCH, PPO, Donchian, genético e somar isso à fusão latente
 - [ ] Treinar modelo só sentiment analysis/embedding de sentimento e comparar + DL
 - [ ] Latent fusion: melhorar a UX pra ser útil pra investidor (semelhante à UI da Nubank)
