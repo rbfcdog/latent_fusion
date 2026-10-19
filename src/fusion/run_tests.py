@@ -113,9 +113,9 @@ def write_report(panel, result, out_dir):
              f"Painel: {len(panel['tickers'])} tickers; alvo: raiz da média de retornos logarítmicos quadrados dos próximos {panel['horizon']} pregões × √252.",
              "Texto atrasado um pregão, sem imputação de notícias; MOMENT e vol passada conhecidos na decisão.",
              f"Treino até {pd.Timestamp(panel['val_start']).date()}, validação até {pd.Timestamp(panel['train_end']).date()}, teste depois. Rótulos de treino/validação purgados na fronteira.",
-             "Métricas em volatilidade anualizada (0,20 = 20%); R² relativo à média do teste. Persistência = volatilidade realizada dos 20 pregões anteriores.",
-             "", "## Ablação", "", result["table"].to_markdown(index=False),
-             "", "## Regime conhecido e presença de notícia", "", result["groups"].to_markdown(index=False),
+             "Métricas em volatilidade anualizada (0,20 = 20%); R² relativo à média do teste. Persistência = volatilidade realizada dos 20 pregões anteriores. Janelas futuras se sobrepõem; diferenças pequenas não implicam significância estatística.",
+             "", "## Ablação", "", result["table"].to_html(index=False),
+             "", "## Regime conhecido e presença de notícia", "", result["groups"].to_html(index=False),
              "", "## Atenção e permutação de texto (diagnóstico, não evidência causal)", "",
              "```json", json.dumps(result["attn_summary"], indent=2), "```"]
     (out_dir / "results.md").write_text("\n".join(lines), encoding="utf-8")
