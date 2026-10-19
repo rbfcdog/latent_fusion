@@ -32,7 +32,8 @@ def plot_volatility(dailies, out_path):
     ax.plot(observed.index, observed["past_vol"], color=COLORS["persistence"],
             label="persistência", linewidth=1.4)
     for name, daily in dailies.items():
-        ax.plot(daily.index, daily["pred"], color=COLORS[name], label=name, linewidth=1.4)
+        ax.plot(daily.index, daily["pred"], color=COLORS[name],
+                label="texto + persistência" if name == "text_only" else name, linewidth=1.4)
     ax.set_title("Volatilidade futura de 20 pregões — teste", color="white", fontsize=16)
     ax.set_ylabel("volatilidade anualizada", color="white", fontsize=14)
     ax.tick_params(colors="white", labelsize=12)
@@ -99,8 +100,11 @@ def run_ablation(panel, device, out_dir=None):
             numeric = volatility_metrics(part["target_vol"], part["pred"])["rmse"]
             match = (groups["group"] == group_col) & (groups["value"] == str(label))
             groups.loc[match, "gain_vs_ts_rmse"] = numeric - groups.loc[match, "rmse"]
+    coverage = (test_frame.groupby(pd.Grouper(key="date", freq="MS"))["news_today"]
+                .agg(observed="sum", samples="count").reset_index())
+    coverage["fraction"] = coverage["observed"] / coverage["samples"]
     return {"table": table, "groups": groups, "history": pd.DataFrame(hist_rows),
-            "attn_summary": attn_summary, "dailies": dailies}
+            "attn_summary": attn_summary, "dailies": dailies, "coverage": coverage}
 
 
 def write_report(panel, result, out_dir):
@@ -109,13 +113,16 @@ def write_report(panel, result, out_dir):
     result["table"].to_csv(out_dir / "results.csv", index=False)
     result["groups"].to_csv(out_dir / "groups.csv", index=False)
     result["history"].to_csv(out_dir / "history.csv", index=False)
+    result["coverage"].to_csv(out_dir / "news_coverage.csv", index=False)
     lines = ["# Fusão para volatilidade realizada futura (20 pregões)", "",
              f"Painel: {len(panel['tickers'])} tickers; alvo: raiz da média de retornos logarítmicos quadrados dos próximos {panel['horizon']} pregões × √252.",
-             "Texto atrasado um pregão, sem imputação de notícias; MOMENT e vol passada conhecidos na decisão.",
+             "Texto diário: embedding semântico, diferença vetorial para a última notícia observada e novidade cosseno; fins de semana chegam ao próximo pregão e todas as notícias são atrasadas mais um pregão. MOMENT e vol passada conhecidos na decisão.",
              f"Treino até {pd.Timestamp(panel['val_start']).date()}, validação até {pd.Timestamp(panel['train_end']).date()}, teste depois. Rótulos de treino/validação purgados na fronteira.",
-             "Métricas em volatilidade anualizada (0,20 = 20%); R² relativo à média do teste. Persistência = volatilidade realizada dos 20 pregões anteriores. Janelas futuras se sobrepõem; diferenças pequenas não implicam significância estatística.",
+             "Texto isolado usa persistência quando nenhuma notícia entra na janela; ausência no cache não prova ausência real de notícia. A cobertura mensal do feed deve ser examinada antes de interpretar ablações.",
              "", "## Ablação", "", result["table"].to_html(index=False),
-             "", "## Regime conhecido e presença de notícia", "", result["groups"].to_html(index=False),
+             "", "## Regime conhecido e presença de notícia na janela", "", result["groups"].to_html(index=False),
+             "", "## Cobertura de notícias por pregão (cache; não equivale a ausência real de notícias)", "",
+             result["coverage"].to_html(index=False),
              "", "## Atenção e permutação de texto (diagnóstico, não evidência causal)", "",
              "```json", json.dumps(result["attn_summary"], indent=2), "```"]
     (out_dir / "results.md").write_text("\n".join(lines), encoding="utf-8")

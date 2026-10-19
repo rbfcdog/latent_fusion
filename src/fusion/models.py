@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 D_TS = 1024
-D_TEXT = 384
+D_TEXT = 2 * 384 + 1
 
 
 class NumericEncoder(nn.Module):
@@ -42,7 +42,9 @@ class TextOnlyPredictor(nn.Module):
         text = self.proj(z_text)
         pooled = (text * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1)
         coverage = text_mask.float().mean(dim=1, keepdim=True)
-        return self.head(torch.cat([pooled, coverage], dim=-1)), {}
+        prediction = self.head(torch.cat([pooled, coverage], dim=-1))
+        fallback = torch.log(past_vol.clamp_min(1e-6)).unsqueeze(-1)
+        return torch.where(text_mask.any(dim=1, keepdim=True), prediction, fallback), {}
 
 
 class FusionPredictor(TSOnlyPredictor):

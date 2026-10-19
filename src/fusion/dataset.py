@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 SEQ_LEN = 10
 HORIZON = 20
 MOMENT_MAX_AGE = 5
-PANEL_VERSION = 2
+PANEL_VERSION = 3
 
 
 def _load_prices(ticker, ts_dir):
@@ -39,9 +39,14 @@ def load_panel(cache_dir="cache", ts_dir="data/time_series", seq_len=SEQ_LEN,
         px["target_end"] = px["Date"].shift(-horizon)
         px["known_ret"] = px["Close"].pct_change()
 
-        t = text_meta.loc[text_meta.ticker == ticker, ["date", "text_idx"]]
+        t = text_meta.loc[text_meta.ticker == ticker, ["date", "text_idx"]].copy()
+        trading_dates = px["Date"].to_numpy()
+        next_trade = np.searchsorted(trading_dates, t["date"].to_numpy())
+        t = t.loc[next_trade < len(px)].copy()
+        t["Date"] = trading_dates[next_trade[next_trade < len(px)]]
+        t = t.groupby("Date")["text_idx"].agg(list).reset_index()
         m = mom_meta.loc[mom_meta.ticker == ticker, ["date", "mom_idx"]]
-        df = px.merge(t, left_on="Date", right_on="date", how="left").drop(columns="date")
+        df = px.merge(t, on="Date", how="left")
         df = df.merge(m, left_on="Date", right_on="date", how="left").drop(columns="date")
         df["text_idx"] = df["text_idx"].shift(1)
         df["mom_idx"] = df["mom_idx"].ffill(limit=MOMENT_MAX_AGE)
@@ -50,8 +55,18 @@ def load_panel(cache_dir="cache", ts_dir="data/time_series", seq_len=SEQ_LEN,
             continue
         names.append(ticker)
         observed = df["text_idx"].notna().to_numpy()
-        text = np.zeros((len(df), text_emb.shape[1]), dtype=np.float32)
-        text[observed] = text_emb[df.loc[observed, "text_idx"].astype(int).to_numpy()]
+        dim = text_emb.shape[1]
+        text = np.zeros((len(df), 2 * dim + 1), dtype=np.float32)
+        previous = None
+        for row in np.flatnonzero(observed):
+            current = np.asarray(text_emb[df.at[row, "text_idx"]], dtype=np.float32).mean(axis=0)
+            text[row, :dim] = current
+            if previous is not None:
+                text[row, dim:2 * dim] = current - previous
+                denom = np.linalg.norm(current) * np.linalg.norm(previous)
+                if denom > 0:
+                    text[row, -1] = 1 - np.dot(current, previous) / denom
+            previous = current
         arrays.append({
             "dates": df["Date"].to_numpy(),
             "target_end": df["target_end"].to_numpy(),
@@ -124,7 +139,7 @@ def save_panel(panel, path):
 def load_panel_file(path):
     with np.load(path, allow_pickle=False) as z:
         if "version" not in z or int(z["version"]) != PANEL_VERSION:
-            raise ValueError("Painel antigo de retornos; gere fusion_vol_panel.npz novamente")
+            raise ValueError("Painel obsoleto; gere fusion_vol_panel.npz novamente")
         tickers = z["tickers"].tolist()
         fields = ("dates", "target_end", "text", "text_mask", "mom", "past_vol", "target_vol", "known_ret")
         arrays = [{k: z[f"arr_{i}_{k}"] for k in fields} for i in range(len(tickers))]
@@ -165,7 +180,8 @@ def sample_frame(panel, split):
         sl = slice(j - panel["seq_len"] + 1, j + 1)
         rows.append({"ticker": panel["tickers"][ti], "date": a["dates"][j],
                      "target_end": a["target_end"][j], "target_vol": a["target_vol"][j],
-                     "past_vol": a["past_vol"][j], "has_news": bool(a["text_mask"][sl].any())})
+                     "past_vol": a["past_vol"][j], "has_news": bool(a["text_mask"][sl].any()),
+                     "news_today": bool(a["text_mask"][j])})
     df = pd.DataFrame(rows)
     df["regime"] = df["date"].map(panel["regime"]).fillna(0).astype(int)
     return df
