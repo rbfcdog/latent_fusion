@@ -117,7 +117,7 @@ def _tilt(scores):
     return weights / weights.sum()
 
 
-def _portfolio(panel, predictions, cost_bps):
+def _portfolio(panel, predictions, cost_bps, *, rebalance_sessions=5, weight_fn=_tilt, end_date=None):
     tickers = panel["tickers"]
     score_matrix = predictions.pivot(index="date", columns="ticker", values="score").reindex(columns=tickers)
     common = score_matrix.dropna().sort_index()
@@ -132,14 +132,19 @@ def _portfolio(panel, predictions, cost_bps):
     first = eligible[0]
     last_rebalance = eligible[-1]
     interval = dates[(dates >= first) & (dates <= last_rebalance)]
-    scheduled = interval[::5]
+    if rebalance_sessions < 1:
+        raise ValueError("Intervalo de rebalanceamento inválido")
+    scheduled = interval[::rebalance_sessions]
     rebalance = scheduled.intersection(common.index)
     skipped = set(scheduled.difference(rebalance))
-    final_date = dates[dates.get_loc(rebalance[-1]) + 5]
+    last_required = dates[dates.get_loc(rebalance[-1]) + 5]
+    final_date = last_required if end_date is None else pd.Timestamp(end_date)
+    if final_date not in dates or final_date < last_required:
+        raise ValueError("Data final fora do calendário ou anterior ao horizonte de cinco pregões")
     daily = daily.loc[first:final_date]
     if np.any(~np.isfinite(daily.to_numpy())):
         raise ValueError("Retornos diários não finitos")
-    target = {date: _tilt(common.loc[date].to_numpy(dtype=float)) for date in rebalance}
+    target = {date: weight_fn(common.loc[date].to_numpy(dtype=float)) for date in rebalance}
     equal = np.full(len(tickers), 1 / len(tickers))
     weights, bh_weights = None, None
     capital, bh_capital = 1.0, 1.0
