@@ -60,6 +60,25 @@ The offline cost audit replays the **same saved actions**, not new LLM inference
 
 The original 58 Luna responses saved only text and actions, **not API `usage`**, so their actual token counts and USD bill cannot be reconstructed from that cache. `src/fusion/llm_costs.py` writes `trading_cost_comparison.csv`, `api_usage_ledger.csv`, and `api_cost_summary.json`; the old calls are labeled **unpriced**, not free. From now on, every returned API response is appended to an attempts log with provider model, response ID, input/output, cached and reasoning token details **before** JSON validation, including unsuccessful-format responses. An API error with no usage response cannot be priced. New GPT-6 Luna responses with sufficient usage and the Standard tier receive an estimated **list-price** quote based on [official rates](https://developers.openai.com/api/docs/pricing), checked on 2026-10-21: per million short-context tokens **$0.10 input, $0.50 output, $0.01 cached input**. Nonstandard tiers, unknown cache accounting or missing usage remain unpriced. A separate 11-input/15-output-token diagnostic call confirmed the API supplies usage and had an estimated list-price cost of **$0.0000086**, **not** the cost of any of the 58 trading decisions. Invoicing, discounts, retries without a response, and USD-to-return conversion require the provider's billing records and a capital amount.
 
+## Interseção fixa Luna × numérico (execução local)
+
+`src/fusion/llm_numeric_hybrid.py` reconstitui as posições independentes do Luna e da política numérica em cada uma das **58 datas** já auditadas. Só mantém uma ação quando **ambos** mantêm o ativo após a decisão; aplica pesos iguais aos ativos em consenso e fica em caixa se nenhum coincidir. Uma entrada pode ocorrer quando o numérico passa a comprar algo que o Luna já possuía; qualquer saída de uma das políticas desfaz a posição. A decisão é tomada após o fechamento e só captura retornos da sessão seguinte. Os sinais numéricos, as respostas do Luna e o conjunto de oito ativos são os mesmos da comparação anterior: **nenhuma nova chamada à API nem inferência de embeddings** nesta execução, portanto custo incremental de API **US$ 0**; o custo histórico das 58 chamadas continua desconhecido.
+
+| Política | Retorno bruto | Retorno líquido (10 bps) | Excesso líquido vs. comprar e manter | Arrasto das negociações |
+|---|---:|---:|---:|---:|
+| Luna ∩ numérico | 22,28728% | **13,41126%** | −7,31802 p.p. | 8,87602 p.p. |
+| Luna | 18,82910% | 16,27840% | −4,45088 p.p. | 2,55070 p.p. |
+| Numérico | 38,04633% | 28,25956% | +7,53028 p.p. | 9,78677 p.p. |
+| Comprar e manter | 20,85013% | 20,72928% | 0 p.p. | 0,12085 p.p. |
+
+A interseção **não melhorou a performance**: ficou 14,84830 p.p. abaixo do numérico e 2,86714 p.p. abaixo do próprio Luna. A rotatividade total de 75,29381 (peso absoluto negociado) produziu o arrasto de 8,87602 p.p.; não ajustar o filtro usando o resultado já inspecionado. Esta é uma sobreposição **offline de decisões**, não um novo agente conjunto que conversa com o Luna usando as posições híbridas; tampouco separa o valor incremental do texto, pois o Luna viu preços. O recorte de 2022–23 já foi examinado e não comprova alfa futuro.
+
+As decisões por ativo, predições numéricas copiadas do arquivo temporário e verificadas por hash, métricas, curvas e figura estão em `data/llm_trading_agent_results/api-gpt-6-luna/hybrid_consensus/` (gitignored). Para repetir localmente sem depender de `/tmp`:
+
+```bash
+uv run python -c "from src.fusion.llm_numeric_hybrid import run_hybrid; from pathlib import Path; root = Path('data/llm_trading_agent_results/api-gpt-6-luna'); run_hybrid('data/fusion_event_panel.npz', 'data/fusion_events.jsonl.gz', root / 'hybrid_consensus/numeric_predictions.csv', root, root / 'hybrid_consensus')"
+```
+
 ## Fast fusion presentation demo (Colab)
 
 `notebooks/05_fusion/fast_fusion_demo_colab.ipynb` replaces the slow 7B LLM extraction with a small, genuine multimodal attention comparison. It uses the **existing Drive panel for dates and observed returns only**, not its stored MOMENT vectors. On each Colab GPU run it generates fresh MOMENT-1-small embeddings from the previous 64 known daily returns for every required numeric input and fresh MiniLM embeddings for **all 8,455 audited titles** of eight fixed assets (ADBE, BABA, COST, CVX, GILD, NKE, PYPL, QCOM). The verified titles already have the conservative one-session delay; days without titles remain in the evaluation. No separate price CSV upload or old article-embedding cache is required.

@@ -45,8 +45,8 @@ def _price_usage(api):
     return row
 
 
-def write_cost_reports(panel_path, news_path, baseline_csv, out_dir, *, cost_bps=10):
-    from src.fusion.llm_trading_agent import _apply, _backtest, _numeric_actions, _prepare, parse_actions
+def load_saved_signals(panel_path, news_path, baseline_csv, out_dir, *, cost_bps=10):
+    from src.fusion.llm_trading_agent import _apply, _numeric_actions, _prepare, parse_actions
 
     out = Path(out_dir)
     config = json.loads((out / "run_config.json").read_text(encoding="utf-8"))
@@ -67,9 +67,11 @@ def write_cost_reports(panel_path, news_path, baseline_csv, out_dir, *, cost_bps
         group = grouped[date]
         titles = {ticker: [article["title"] for article in group[ticker]["available_headlines"]]
                   for ticker in panel["tickers"]}
+        source_fields = ("panel_sha256", "news_sha256", "baseline_sha256", "prompt_version",
+                         "backend", "model_id", "base_url", "rebalance_sessions")
         if (saved.get("index") != index or not isinstance(saved.get("raw"), str) or
-                saved.get("metadata", {}).get("model_id") != config.get("model_id") or
-                saved.get("metadata", {}).get("panel_sha256") != config["panel_sha256"]):
+                not isinstance(saved.get("metadata"), dict) or
+                any(saved["metadata"].get(field) != config.get(field) for field in source_fields)):
             raise ValueError("Resposta salva incompatível com o modelo/painel")
         parsed = parse_actions(saved["raw"], panel["tickers"], held, titles)
         if parsed != saved.get("parsed"):
@@ -77,6 +79,15 @@ def write_cost_reports(panel_path, news_path, baseline_csv, out_dir, *, cost_bps
         actions[date] = parsed["actions"]
         held = _apply(held, parsed["actions"])
     numeric_actions = _numeric_actions(panel, schedule, numeric)
+    return panel, schedule, actions, numeric_actions, records, config
+
+
+def write_cost_reports(panel_path, news_path, baseline_csv, out_dir, *, cost_bps=10):
+    from src.fusion.llm_trading_agent import _backtest
+
+    panel, schedule, actions, numeric_actions, records, config = load_saved_signals(
+        panel_path, news_path, baseline_csv, out_dir, cost_bps=cost_bps)
+    out = Path(out_dir)
     rows = {}
     for name, decisions in (("llm_agent", actions), ("numeric_agent", numeric_actions)):
         gross = _backtest(panel, schedule, decisions, 0)
