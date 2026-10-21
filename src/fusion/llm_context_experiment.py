@@ -133,7 +133,7 @@ def _backend(name, model_id, *, base_url=None, max_new_tokens=220):
         client = OpenAI(api_key=key, **({"base_url": base_url} if base_url else {}))
 
         def generate(messages):
-            response = client.chat.completions.create(model=model_id, messages=messages, temperature=0)
+            response = client.chat.completions.create(model=model_id, messages=messages)
             return response.choices[0].message.content
 
         return generate

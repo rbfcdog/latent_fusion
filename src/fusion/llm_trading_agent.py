@@ -280,6 +280,6 @@ def run_agent(panel_path, news_path, baseline_csv, out_dir, *, backend, model_id
     plt.close(fig)
     (output / "run_config.json").write_text(json.dumps({**metadata, "cost_bps": cost_bps,
         "decisions": len(schedule), "cache": cache_path.name,
-        "note": "Teste 2022–23 já visto; modelos pós-2023 podem memorizar fatos futuros. Sem inferência local ou validação 2024+."},
+        "note": "Teste 2022–23 já visto; modelos pós-2023 podem memorizar fatos futuros. Sem validação independente em 2024+."},
         ensure_ascii=False, indent=2), encoding="utf-8")
     return {"metrics": metrics, "equity": equity, "actions": pd.DataFrame(trace), "cache": cache_path}
