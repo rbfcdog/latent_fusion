@@ -120,7 +120,7 @@ def parse_response(raw, headlines):
     return obj
 
 
-def _backend(name, model_id, *, base_url=None, max_new_tokens=220):
+def _backend(name, model_id, *, base_url=None, max_new_tokens=220, include_usage=False):
     if name == "api":
         from openai import OpenAI
         if base_url is not None:
@@ -134,7 +134,12 @@ def _backend(name, model_id, *, base_url=None, max_new_tokens=220):
 
         def generate(messages):
             response = client.chat.completions.create(model=model_id, messages=messages)
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if include_usage:
+                return content, {"response_id": response.id, "response_model": response.model,
+                                 "service_tier": response.service_tier,
+                                 "usage": response.usage.model_dump(exclude_none=True) if response.usage else None}
+            return content
 
         return generate
     if name == "transformers":
@@ -155,7 +160,8 @@ def _backend(name, model_id, *, base_url=None, max_new_tokens=220):
             with torch.inference_mode():
                 generated = model.generate(**encoded, max_new_tokens=max_new_tokens, do_sample=False,
                                            pad_token_id=tokenizer.eos_token_id)
-            return tokenizer.decode(generated[0, encoded["input_ids"].shape[1]:], skip_special_tokens=True)
+            content = tokenizer.decode(generated[0, encoded["input_ids"].shape[1]:], skip_special_tokens=True)
+            return (content, {"response_model": model_id, "usage": None}) if include_usage else content
 
         return generate
     raise ValueError("Backend deve ser 'api' ou 'transformers'")

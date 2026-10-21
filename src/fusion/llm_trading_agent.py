@@ -185,13 +185,14 @@ def run_agent(panel_path, news_path, baseline_csv, out_dir, *, backend, model_id
     output = Path(out_dir)
     output.mkdir(parents=True, exist_ok=True)
     cache_path = output / f"actions_{key}.jsonl"
+    attempts_path = output / f"api_attempts_{key}.jsonl"
     if not cache_path.exists():
         cache_path.touch()
     held = set()
     actions = {}
     trace = []
     generate = None
-    with cache_path.open("r+b") as stream:
+    with cache_path.open("r+b") as stream, attempts_path.open("a", encoding="utf-8") as attempts:
         for index, date in enumerate(schedule):
             group = grouped[date]
             context = {"decision_date": date.date().isoformat(), "basket": panel["tickers"],
@@ -222,11 +223,17 @@ def run_agent(panel_path, news_path, baseline_csv, out_dir, *, backend, model_id
                     raise ValueError("Ações previamente salvas foram modificadas")
             else:
                 if generate is None:
-                    generate = _backend(backend, model_id, base_url=base_url, max_new_tokens=512)
-                raw = generate(messages)
+                    generate = _backend(backend, model_id, base_url=base_url,
+                                        max_new_tokens=512, include_usage=True)
+                raw, response_meta = generate(messages)
+                attempts.write(json.dumps({"index": index, "date": date.date().isoformat(),
+                                           "prompt_sha256": prompt_hash, "api": response_meta},
+                                          ensure_ascii=False) + "\n")
+                attempts.flush()
+                os.fsync(attempts.fileno())
                 parsed = parse_actions(raw, panel["tickers"], held, titles)
                 record = {"metadata": metadata, "index": index, "prompt_sha256": prompt_hash,
-                          "raw": raw, "parsed": parsed}
+                          "raw": raw, "parsed": parsed, "api": response_meta}
                 stream.write((json.dumps(record, ensure_ascii=False) + "\n").encode())
                 stream.flush()
                 os.fsync(stream.fileno())
@@ -282,4 +289,7 @@ def run_agent(panel_path, news_path, baseline_csv, out_dir, *, backend, model_id
         "decisions": len(schedule), "cache": cache_path.name,
         "note": "Teste 2022–23 já visto; modelos pós-2023 podem memorizar fatos futuros. Sem validação independente em 2024+."},
         ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"metrics": metrics, "equity": equity, "actions": pd.DataFrame(trace), "cache": cache_path}
+    from src.fusion.llm_costs import write_cost_reports
+    cost_report = write_cost_reports(panel_path, news_path, baseline_csv, out_dir, cost_bps=cost_bps)
+    return {"metrics": metrics, "equity": equity, "actions": pd.DataFrame(trace),
+            "cache": cache_path, "cost_report": cost_report}
