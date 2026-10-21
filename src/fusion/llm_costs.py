@@ -17,29 +17,43 @@ def _price_usage(api):
     usage = api.get("usage") if isinstance(api, dict) else None
     if not isinstance(usage, dict):
         return {"status": "usage_unavailable", "input_tokens": None, "output_tokens": None,
-                "cached_tokens": None, "reasoning_tokens": None, "list_usd": None}
-    prompt, completion = usage.get("prompt_tokens"), usage.get("completion_tokens")
-    details = usage.get("prompt_tokens_details") or {}
-    output_details = usage.get("completion_tokens_details") or {}
+                "cached_tokens": None, "cache_write_tokens": None,
+                "reasoning_tokens": None, "list_usd": None}
+    responses = "input_tokens" in usage
+    prompt = usage.get("input_tokens" if responses else "prompt_tokens")
+    completion = usage.get("output_tokens" if responses else "completion_tokens")
+    details = usage.get("input_tokens_details" if responses else "prompt_tokens_details") or {}
+    output_details = usage.get("output_tokens_details" if responses else "completion_tokens_details") or {}
     cached = details.get("cached_tokens")
+    writes = details.get("cache_write_tokens", 0)
     reasoning = output_details.get("reasoning_tokens")
     if (any(isinstance(value, bool) or not isinstance(value, int) or value < 0
-            for value in (prompt, completion))
+            for value in (prompt, completion, writes))
             or (cached is not None and (isinstance(cached, bool) or not isinstance(cached, int)
-                                        or not 0 <= cached <= prompt))):
+                                        or not 0 <= cached <= prompt))
+            or (cached is not None and cached + writes > prompt)):
         raise ValueError("Contagem de tokens inválida na resposta da API")
     row = {"input_tokens": prompt, "output_tokens": completion, "cached_tokens": cached,
-           "reasoning_tokens": reasoning, "list_usd": None}
+           "cache_write_tokens": writes, "reasoning_tokens": reasoning, "list_usd": None}
+    write_details = details.get("cache_write_tokens_details") or {}
+    thirty = write_details.get("ttl_30m_tokens", 0)
+    twelve = write_details.get("ttl_12h_tokens", 0)
+    if any(isinstance(value, bool) or not isinstance(value, int) or value < 0
+           for value in (thirty, twelve)) or (write_details and thirty + twelve != writes):
+        raise ValueError("Duração de cache incompatível com uso registrado")
+    if writes and not write_details and responses and api.get("prompt_cache_ttl") == "30m":
+        thirty = writes
     if api.get("response_model") != "gpt-6-luna" or api.get("service_tier") not in (None, "default"):
         row["status"] = "price_unavailable_for_model_or_tier"
-    elif details.get("cache_write_tokens"):
+    elif writes and thirty + twelve != writes:
         row["status"] = "cache_write_duration_unavailable"
     elif cached is None:
         row["status"] = "cached_token_count_unavailable"
     else:
         input_price, output_price, cached_price = ((.10, .50, .01) if prompt <= 272_000
                                                    else (.20, .75, .02))
-        row["list_usd"] = ((prompt - cached) * input_price + cached * cached_price
+        row["list_usd"] = ((prompt - cached - writes) * input_price + cached * cached_price
+                           + thirty * input_price * 1.25 + twelve * input_price * 2.5
                            + completion * output_price) / 1_000_000
         row["status"] = "standard_list_estimate"
     return row

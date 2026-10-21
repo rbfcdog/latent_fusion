@@ -79,6 +79,27 @@ As decisões por ativo, predições numéricas copiadas do arquivo temporário e
 uv run python -c "from src.fusion.llm_numeric_hybrid import run_hybrid; from pathlib import Path; root = Path('data/llm_trading_agent_results/api-gpt-6-luna'); run_hybrid('data/fusion_event_panel.npz', 'data/fusion_events.jsonl.gz', root / 'hybrid_consensus/numeric_predictions.csv', root, root / 'hybrid_consensus')"
 ```
 
+## Luna com chamada real de ferramenta numérica (execução local)
+
+`src/fusion/llm_tool_agent.py` substitui a interseção offline por **novas decisões do GPT-6 Luna** via Responses API, com `reasoning.effort=medium`. Em cada uma das 58 datas, o modelo recebe apenas a carteira atual e manchetes já disponíveis; solicita `analyze_numeric` para os ativos que escolher, recebe a previsão **numérica de excesso em cinco pregões**, seu posto na cesta, retorno passado de 20 pregões e volatilidade passada, e então decide BUY/SELL/HOLD. A chamada de ferramenta, sua saída, a resposta final e o uso de tokens são auditados; a resposta continua no mesmo turno por `previous_response_id`. O laço permite até três rodadas de ferramentas. Nesta execução, o próprio Luna pediu **os oito ativos em uma chamada por data**, seguida de uma resposta final: 58 chamadas de ferramenta e 116 respostas de API. Nenhum retorno futuro ou rótulo foi enviado à ferramenta ou ao modelo. As manchetes não geram embeddings; **a previsão numérica reutilizada veio de um modelo de séries temporais com MOMENT**, treinado antes do teste. A saída é validada contra as posições vigentes e as manchetes literais permitidas. O backtest compra/vende após o fechamento e só recebe retornos das sessões seguintes, com pesos iguais entre posições longas e custo de 10 bps por peso negociado.
+
+| Política na mesma cesta e calendário | Retorno bruto | Retorno líquido, 10 bps | Excesso líquido vs. comprar e manter | Arrasto das negociações |
+|---|---:|---:|---:|---:|
+| **Luna + ferramenta numérica** | 43,44538% | **36,14284%** | **+15,41356 p.p.** | 7,30254 p.p. |
+| Numérico isolado | 38,04633% | 28,25956% | +7,53028 p.p. | 9,78677 p.p. |
+| Luna anterior, sem ferramenta | 18,82910% | 16,27840% | −4,45088 p.p. | 2,55070 p.p. |
+| Comprar e manter | 20,85013% | 20,72928% | 0 p.p. | 0,12085 p.p. |
+
+As decisões novas superaram a política numérica em **7,88328 p.p. líquidos** e o Luna anterior em **19,86444 p.p.**; não é a interseção anterior. Foram 65 compras, 62 vendas, 337 manutenções e 380 citações de manchetes válidas. O drawdown máximo observado foi **−19,82692%**, superior em magnitude ao **−14,65727%** de comprar e manter. O recorte de 2022–23 e os oito ativos já foram examinados; o modelo pode ter aprendido acontecimentos posteriores ao período. Este resultado **não demonstra lucratividade fora da amostra** nem isola causalmente a contribuição textual.
+
+O registro da execução concluída em `data/llm_trading_agent_results/api-gpt-6-luna/with_numeric_tool_v2/` contém 116 respostas, 533.010 tokens de entrada, 45.095 tokens de saída (25.286 de raciocínio) e custo **estimado** de **US$ 0,060470725** em preços Standard, incluindo leituras e escritas de cache de 30 minutos. Uma tentativa inicial de validação do formato retornou duas respostas pagas sem decisão aceita: **US$ 0,000925980** estimados, registradas separadamente em `with_numeric_tool/`. O custo estimado de **todas as 118 respostas novas** foi, portanto, **US$ 0,061396705**; a fatura real e o custo das 58 decisões antigas continuam desconhecidos. [Preços oficiais](https://developers.openai.com/api/docs/pricing) e [contabilização de cache](https://developers.openai.com/api/docs/guides/prompt-caching); valores em dólares não foram convertidos em retorno percentual por ausência de capital inicial.
+
+Os arquivos `actions_*.jsonl`, `api_attempts_*.jsonl`, `api_usage_ledger.csv`, `api_cost_summary.json`, `portfolio_comparison.csv`, `equity_curves.csv`, `tool_agent_actions.csv`, `numeric_predictions.csv` e `tool_agent_vs_benchmarks.png` são locais e ignorados pelo Git. Repetir a execução com o cache existente **não** chama a API; removê-lo inicia novas respostas pagas:
+
+```bash
+uv run --env-file .env python -c "from src.fusion.llm_tool_agent import run_tool_agent; from pathlib import Path; root = Path('data/llm_trading_agent_results/api-gpt-6-luna'); run_tool_agent('data/fusion_event_panel.npz', 'data/fusion_events.jsonl.gz', root / 'with_numeric_tool_v2/numeric_predictions.csv', root, root / 'with_numeric_tool_v2')"
+```
+
 ## Fast fusion presentation demo (Colab)
 
 `notebooks/05_fusion/fast_fusion_demo_colab.ipynb` replaces the slow 7B LLM extraction with a small, genuine multimodal attention comparison. It uses the **existing Drive panel for dates and observed returns only**, not its stored MOMENT vectors. On each Colab GPU run it generates fresh MOMENT-1-small embeddings from the previous 64 known daily returns for every required numeric input and fresh MiniLM embeddings for **all 8,455 audited titles** of eight fixed assets (ADBE, BABA, COST, CVX, GILD, NKE, PYPL, QCOM). The verified titles already have the conservative one-session delay; days without titles remain in the evaluation. No separate price CSV upload or old article-embedding cache is required.
