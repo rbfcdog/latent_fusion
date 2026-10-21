@@ -120,7 +120,7 @@ def parse_response(raw, headlines):
     return obj
 
 
-def _backend(name, model_id, *, base_url=None):
+def _backend(name, model_id, *, base_url=None, max_new_tokens=220):
     if name == "api":
         from openai import OpenAI
         if base_url is not None:
@@ -153,7 +153,7 @@ def _backend(name, model_id, *, base_url=None):
             prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             encoded = tokenizer(prompt, return_tensors="pt").to(model.device)
             with torch.inference_mode():
-                generated = model.generate(**encoded, max_new_tokens=220, do_sample=False,
+                generated = model.generate(**encoded, max_new_tokens=max_new_tokens, do_sample=False,
                                            pad_token_id=tokenizer.eos_token_id)
             return tokenizer.decode(generated[0, encoded["input_ids"].shape[1]:], skip_special_tokens=True)
 
