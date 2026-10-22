@@ -50,8 +50,10 @@ def _client(spec):
 
 def _generate(spec):
     client = _client(spec)
+    calls = 0
 
     def generate(messages):
+        nonlocal calls
         started = time.time()
         tokens_field = "max_completion_tokens" if spec["backend"] == "openai" else "max_tokens"
         kwargs = {"model": spec["model"], "messages": messages, tokens_field: 1024}
@@ -65,14 +67,23 @@ def _generate(spec):
                 response = client.chat.completions.create(**kwargs)
                 text = response.choices[0].message.content or ""
                 usage = getattr(response, "usage", None)
+                calls += 1
+                ms = int((time.time() - started) * 1000)
+                p_tok = getattr(usage, "prompt_tokens", 0) or 0
+                c_tok = getattr(usage, "completion_tokens", 0) or 0
+                served = getattr(response, "model", None) or spec["model"]
+                if calls % 5 == 0 or calls == 1:
+                    print(f"[{spec['tag']}] dec #{calls} | {p_tok} in / {c_tok} out | {ms}ms | {served}", flush=True)
+                time.sleep(0.3)
                 return text, {
-                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
-                    "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
-                    "served_model": getattr(response, "model", None) or spec["model"],
-                    "elapsed_ms": int((time.time() - started) * 1000),
+                    "prompt_tokens": p_tok,
+                    "completion_tokens": c_tok,
+                    "served_model": served,
+                    "elapsed_ms": ms,
                 }
             except Exception as exc:
                 last_error = exc
+                print(f"[{spec['tag']}] retry {attempt+1}/5 após erro: {exc}", flush=True)
                 time.sleep(min(60, 5 * (2 ** attempt)))
         raise RuntimeError(f"chamada falhou após retries: {last_error}")
 
