@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 
 from src.fusion.llama_news_backtest import (
-    build_context, decision_dates, load_news, messages_for, numeric_actions,
-    parse_actions, run_llama_backtest, simulate, _apply)
+    build_context, buy_and_hold, decision_dates, load_news, messages_for,
+    numeric_actions, parse_actions, run_llama_backtest, simulate, _apply)
 
 
 def _prices():
@@ -36,21 +36,30 @@ def _news_file(root):
     path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
     return path
 
+
 class LlamaNewsBacktestTest(unittest.TestCase):
-    def test_headline_lag_and_cap(self):
+    def test_headline_lag_cap_and_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             news = load_news(_news_file(root))
             prices = _prices()
             date = prices.index[10]
-            context = build_context(prices, news, date, ["AAA", "BBB"], "news", max_headlines=8)
+            context = build_context(prices, news, date, ["AAA", "BBB"], "news",
+                                    max_headlines=8, held={"BBB"}, cost_bps=10)
             titles = [h["title"] for h in context["assets"]["AAA"]["available_headlines"]]
             self.assertEqual(titles, ["AAA surges on guidance", "AAA beats earnings"])
             self.assertEqual([h["title"] for h in context["assets"]["BBB"]["available_headlines"]],
                              [])
+            self.assertEqual(context["held_before"], ["BBB"])
+            self.assertFalse(context["cash_before"])
+            self.assertTrue(context["assets"]["BBB"]["held"])
             empty = build_context(prices, news, date, ["AAA"], "no_news")
             self.assertEqual(empty["assets"]["AAA"]["available_headlines"], [])
+            self.assertTrue(empty["cash_before"])
             self.assertEqual(context["execution_date"], prices.index[11].date().isoformat())
+            messages = messages_for(context)
+            self.assertIn("Currently holding: BBB", messages[1]["content"])
+            self.assertIn("[HELD]", messages[1]["content"])
 
     def test_parse_actions_clamps_and_fallback(self):
         tickers = ["AAA", "BBB"]
@@ -65,16 +74,42 @@ class LlamaNewsBacktestTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(actions, {"AAA": "HOLD", "BBB": "HOLD"})
 
-    def test_simulate_next_close_fill_and_cost(self):
+    def test_simulate_fill_cost_drift_and_hold_freeze(self):
         prices = _prices()
-        dates = [prices.index[0]]
-        equity = simulate({dates[0]: {"AAA": "BUY", "BBB": "HOLD", "CCC": "HOLD", "DDD": "HOLD"}},
-                          dates, prices, ["AAA", "BBB", "CCC", "DDD"], cost_bps=10)
-        self.assertEqual(equity.index[0], prices.index[1])
-        self.assertAlmostEqual(equity["gross"].iloc[0], 1.0)
+        tickers = ["AAA", "BBB", "CCC", "DDD"]
+        first = prices.index[0]
+        equity = simulate({first: {"AAA": "BUY", "BBB": "HOLD", "CCC": "HOLD", "DDD": "HOLD"}},
+                          [first], prices, tickers, cost_bps=10)
         self.assertAlmostEqual(equity["net"].iloc[0], 1.0 - 10 / 10_000)
+        second = prices.index[5]
+        both = simulate({first: {"AAA": "BUY", "BBB": "HOLD", "CCC": "HOLD", "DDD": "HOLD"},
+                         second: {"AAA": "HOLD", "BBB": "BUY", "CCC": "HOLD", "DDD": "HOLD"}},
+                        [first, second], prices, tickers, cost_bps=10)
+        self.assertEqual(len(both), len(prices) - 1)
+        frozen = simulate({first: {"AAA": "BUY", "BBB": "HOLD", "CCC": "HOLD", "DDD": "HOLD"},
+                           second: {"AAA": "HOLD", "BBB": "HOLD", "CCC": "HOLD", "DDD": "HOLD"}},
+                          [first, second], prices, tickers, cost_bps=10)
+        self.assertAlmostEqual((frozen["net"] / frozen["gross"]).iloc[-1], 1.0 - 10 / 10_000)
 
-    def test_cache_resume_skips_generate(self):
+    def test_drift_matches_buy_and_hold_without_extra_orders(self):
+        base = pd.date_range("2024-08-01", periods=8, freq="D")
+        sessions = pd.DatetimeIndex([base[0], base[2], base[4], base[6]])
+        prices = pd.DataFrame({"AAA": [100.0, 100.0, 200.0, 200.0],
+                               "BBB": [100.0, 100.0, 100.0, 200.0]}, index=sessions)
+        decision = prices.index[0]
+        equity = simulate({decision: {"AAA": "BUY", "BBB": "BUY"}}, [decision],
+                          prices, ["AAA", "BBB"], cost_bps=10)
+        self.assertAlmostEqual(float(equity["net"].iloc[-1]), 2.0 * (1 - 10 / 10_000))
+
+    def test_buy_and_hold_benchmark(self):
+        prices = _prices()
+        tickers = ["AAA", "BBB", "CCC", "DDD"]
+        bench = buy_and_hold(prices, tickers, prices.index[1], cost_bps=10)
+        expected = (1 - 10 / 10_000) * float(
+            ((prices.iloc[-1] / prices.loc[prices.index[1]])).mean())
+        self.assertAlmostEqual(float(bench.iloc[-1]), expected)
+
+    def test_cache_resume_skips_generate_and_records_usage(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             news_path = _news_file(root)
@@ -84,22 +119,20 @@ class LlamaNewsBacktestTest(unittest.TestCase):
             def generate(messages):
                 calls.append(messages)
                 return json.dumps({"actions": {t: "HOLD" for t in ["AAA", "BBB", "CCC", "DDD"]},
-                                   "evidence": {}})
+                                   "evidence": {}}), {"prompt_tokens": 10, "completion_tokens": 5}
 
-            first = run_llama_backtest(prices, news_path, root / "out",
-                                       tickers=["AAA", "BBB", "CCC", "DDD"], model_tag="stub",
-                                       generate_fn=generate, start="2024-08-01",
-                                       end=str(prices.index[15].date()), every=5)
+            kwargs = dict(prices=prices, news_path=news_path, tickers=["AAA", "BBB", "CCC", "DDD"],
+                          model_tag="stub", start="2024-08-01",
+                          end=str(prices.index[15].date()), every=5)
+            first = run_llama_backtest(out_dir=root / "out", generate_fn=generate, **kwargs)
             n_calls = len(calls)
             self.assertGreater(n_calls, 0)
-            second = run_llama_backtest(prices, news_path, root / "out",
-                                        tickers=["AAA", "BBB", "CCC", "DDD"], model_tag="stub",
-                                        generate_fn=generate, start="2024-08-01",
-                                        end=str(prices.index[15].date()), every=5)
+            self.assertEqual(first["usage_total"]["prompt_tokens"], 10 * n_calls)
+            second = run_llama_backtest(out_dir=root / "out", generate_fn=generate, **kwargs)
             self.assertEqual(len(calls), n_calls)
             self.assertAlmostEqual(first["summary"]["news"]["total_return"],
                                    second["summary"]["news"]["total_return"])
-            self.assertIn("paired_diff", second["summary"])
+            self.assertEqual(second["usage_total"]["calls"], len(calls))
 
     def test_numeric_rule_no_lookahead(self):
         prices = _prices()
