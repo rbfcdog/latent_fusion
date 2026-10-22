@@ -118,27 +118,29 @@ def smoke(spec):
                       "preview": text[:120]}, ensure_ascii=False))
 
 
-def run(spec, out_dir):
+def run(spec, out_dir, news_path=NEWS_PATH):
     prices = pd.read_parquet(PRICES_PATH)
     tickers = list(prices.columns)
     out = Path(out_dir)
     config_path = out / "run_config.json"
-    config = {"model_tag": spec["tag"], "model": spec["model"], "backend": spec["backend"],
+    news_file = Path(news_path)
+    config = {"model_tag": out.name, "model": spec["model"], "backend": spec["backend"],
               "provider": spec["provider"], "temperature": spec["temperature"],
-              "prices_sha256": _sha256(PRICES_PATH), "news_sha256": _sha256(NEWS_PATH),
+              "prices_sha256": _sha256(PRICES_PATH), "news_sha256": _sha256(news_file),
+              "news_path": str(news_file),
               "start": "2024-08-01", "end": str(prices.index[-1].date()), "every": 5,
               "cost_bps": 10, "max_headlines": 8,
               "pricing": _pricing_snapshot(spec)}
     if config_path.is_file():
         saved = json.loads(config_path.read_text(encoding="utf-8"))
-        comparable = {k: v for k, v in saved.items() if k != "pricing"}
-        if comparable != {k: v for k, v in config.items() if k != "pricing"}:
+        comparable = {k: v for k, v in saved.items() if k not in ("pricing", "news_path")}
+        if comparable != {k: v for k, v in config.items() if k not in ("pricing", "news_path")}:
             raise ValueError(f"config incompatível em {out}; use diretório novo")
     else:
         out.mkdir(parents=True, exist_ok=True)
         config_path.write_text(json.dumps(config, indent=1), encoding="utf-8")
-    result = run_llama_backtest(prices, NEWS_PATH, out, tickers=tickers,
-                                model_tag=spec["tag"], generate_fn=_generate(spec),
+    result = run_llama_backtest(prices, news_file, out, tickers=tickers,
+                                model_tag=out.name, generate_fn=_generate(spec),
                                 start=config["start"], end=config["end"], every=5,
                                 cost_bps=10, max_headlines=8)
     records = result["records"]
@@ -158,6 +160,8 @@ def main():
     parser = argparse.ArgumentParser(description="Run news backtest via hosted APIs")
     parser.add_argument("--models", nargs="+", default=["70b"], choices=list(MODELS))
     parser.add_argument("--smoke-only", action="store_true")
+    parser.add_argument("--news-path", default=str(NEWS_PATH))
+    parser.add_argument("--tag-suffix", default="")
     args = parser.parse_args()
     OUT_BASE.mkdir(parents=True, exist_ok=True)
     if not PRICES_PATH.is_file():
@@ -169,7 +173,8 @@ def main():
         spec = MODELS[name]
         smoke(spec)
         if not args.smoke_only:
-            run(spec, OUT_BASE / spec["tag"])
+            tag = spec["tag"] + args.tag_suffix
+            run(spec, OUT_BASE / tag, news_path=args.news_path)
 
 
 if __name__ == "__main__":
