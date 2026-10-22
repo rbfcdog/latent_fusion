@@ -53,7 +53,8 @@ def _generate(spec):
 
     def generate(messages):
         started = time.time()
-        kwargs = {"model": spec["model"], "messages": messages, "max_tokens": 1024}
+        tokens_field = "max_completion_tokens" if spec["backend"] == "openai" else "max_tokens"
+        kwargs = {"model": spec["model"], "messages": messages, tokens_field: 1024}
         if spec["temperature"] is not None:
             kwargs["temperature"] = spec["temperature"]
         if spec["provider"] is not None:
