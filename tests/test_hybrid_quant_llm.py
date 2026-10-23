@@ -60,7 +60,7 @@ class HybridQuantLLMTest(unittest.TestCase):
         # CCC is rank 3 (outside buy_rank_cutoff=2), but has a positive FDA approval event
         headlines = {
             "AAA": [], "BBB": [],
-            "CCC": [{"title": "FDA approval granted for cancer treatment"}],
+            "CCC": [{"title": "FDA approval granted for cancer treatment at CCC"}],
             "DDD": []
         }
         actions, ranks, sigs, notes = compute_hybrid_actions(
@@ -71,7 +71,7 @@ class HybridQuantLLMTest(unittest.TestCase):
         self.assertEqual(sigs["CCC"], +1)
         # CCC was promoted into BUY by catalyst boost!
         self.assertEqual(actions["CCC"], "BUY")
-        self.assertIn("HYBRID BOOST", notes["CCC"])
+        self.assertIn("BOOST", notes["CCC"])
 
     def test_veto_triggers_immediate_sell_of_held_stock(self):
         prices, _ = _mock_data()

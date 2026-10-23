@@ -20,6 +20,7 @@ from src.fusion.llama_news_backtest import buy_and_hold, load_news, numeric_acti
 
 BASE = ROOT / "data" / "llama_news_api"
 PRICES = pd.read_parquet(BASE / "prices_2024_2026.parquet")
+VOLUMES = pd.read_parquet(BASE / "volumes_2024_2026.parquet")
 NEWS = load_news(ROOT / "data" / "live_news" / "capture_filtered.jsonl")
 TICKERS = list(PRICES.columns)
 OUT_DIR = BASE / "comparison"
@@ -104,13 +105,17 @@ def run_hybrid_experiment(cost_bps=10):
                 if use_events:
                     for t in TICKERS:
                         t_news = [h for h in NEWS if h["ticker"] == t and h["published_ts"].date() < d.date() and (d.date() - h["published_ts"].date()).days <= 14]
+                        t_px = PRICES[t].iloc[max(0, loc - 20):loc + 1]
+                        t_vol = VOLUMES[t].iloc[max(0, loc - 20):loc + 1]
+                        r_5d = float(t_px.iloc[-1] / t_px.iloc[max(0, len(t_px) - 6)] - 1) if len(t_px) > 5 else 0.0
+                        v_ratio = float(t_vol.tail(5).mean() / max(1.0, t_vol.mean())) if len(t_vol) > 5 else 1.0
+
                         if any(boost_re.search(h["title"]) and is_strictly_relevant(t, h["title"]) for h in t_news):
-                            if ranks[t] <= 6:
+                            if ranks[t] <= 6 and r_5d > 0.0 and v_ratio >= 1.10:
                                 has_pos[t] = True
                         if any(veto_re.search(h["title"]) and is_strictly_relevant(t, h["title"]) for h in t_news):
-                            has_neg[t] = True
-
-                if use_hysteresis:
+                            if r_5d < -0.01:
+                                has_neg[t] = True
                     guarded, _ = apply_hysteresis_guard(raw, held, PRICES, loc, TICKERS, has_pos_events=has_pos, has_neg_events=has_neg)
                 else:
                     guarded = raw
